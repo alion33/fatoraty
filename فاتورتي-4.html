@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>فاتورتي</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --ink:#1a2332;--green:#1a9e6a;--green-lt:#e6f7f1;
+  --red:#d63b3b;--bg:#f0f2f5;--card:#fff;
+  --border:#d8dde5;--muted:#7a8698;--bar-h:56px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:var(--bg);color:var(--ink);padding-top:var(--bar-h);min-height:100vh}
+
+.app-bar{position:fixed;top:0;left:0;right:0;height:var(--bar-h);background:var(--ink);display:flex;align-items:center;justify-content:space-between;padding:0 14px;z-index:500;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.app-title{display:flex;align-items:center;gap:7px;font-size:20px;font-weight:700;color:#fff}
+.app-title em{color:var(--green);font-style:normal}
+.app-bar-side{display:flex;align-items:center;gap:4px}
+.ib{background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background .18s}
+.ib:hover{background:rgba(255,255,255,.13)}
+
+/* مؤشر المزامنة */
+.sync-dot{width:10px;height:10px;border-radius:50%;background:#666;transition:background .3s;flex-shrink:0}
+.sync-dot.ok{background:#4caf50}
+.sync-dot.syncing{background:#ffb300;animation:pulse .8s infinite alternate}
+.sync-dot.err{background:#f44336}
+@keyframes pulse{from{opacity:.4}to{opacity:1}}
+
+.card{max-width:640px;margin:16px auto 24px;background:var(--card);border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.08);overflow:hidden}
+
+.rh{background:var(--ink);color:#fff;padding:16px 18px 14px;display:flex;align-items:center;gap:14px}
+.logo-wrap{flex-shrink:0;width:68px;height:68px;border-radius:8px;border:2px dashed rgba(255,255,255,.3);overflow:hidden;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.logo-wrap img{width:100%;height:100%;object-fit:cover;display:none}
+.logo-ph{font-size:10px;color:rgba(255,255,255,.45);text-align:center;pointer-events:none}
+.logo-wrap input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.biz{flex:1;text-align:center}
+.biz h2{font-size:17px;font-weight:700;margin-bottom:2px}
+.biz p{font-size:11px;color:#aab;margin-bottom:3px}
+.biz-phones{font-size:12px;color:rgba(255,255,255,.75);margin-bottom:7px}
+.biz-badge{display:inline-block;background:var(--green);color:#fff;font-size:12px;padding:3px 13px;border-radius:20px}
+
+.tear{height:11px;background:repeating-linear-gradient(90deg,var(--card) 0 8px,transparent 8px 14px);border-top:1px dashed #bbb;border-bottom:1px dashed #bbb}
+
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 16px 0}
+.mf{display:flex;flex-direction:column;gap:4px}
+.mf.full{grid-column:span 2}
+.mf label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.mf input{padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;color:var(--ink);font-family:inherit;background:#fafbfc;transition:border .15s,box-shadow .15s}
+.mf input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(26,158,106,.1);background:#fff}
+.mf input[readonly]{background:#f2f4f7;color:var(--muted);cursor:default}
+.mf input.filled{border-color:var(--green);background:#f6fef9}
+
+.tbl-wrap{padding:14px 16px 0;overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:420px}
+thead th{background:var(--ink);color:#fff;padding:9px 5px;font-size:12px;text-align:center}
+thead th:first-child{border-radius:6px 0 0 0}thead th:last-child{border-radius:0 6px 0 0}
+tbody tr{transition:background .15s}
+tbody tr:nth-child(even){background:#f8f9fb}
+tbody td{border-bottom:1px solid var(--border);padding:4px;text-align:center}
+tbody td input{width:100%;padding:6px 4px;border:1px solid transparent;border-radius:4px;text-align:center;font-size:13px;font-family:inherit;background:transparent;color:var(--ink);transition:border .15s,background .15s}
+tbody td input:focus{outline:none;border-color:var(--green);background:#fff}
+tbody td input.pname{text-align:right;padding-right:6px}
+.rt-cell{color:var(--green);font-weight:700}
+.del-r{background:none;border:none;color:#ccc;font-size:15px;cursor:pointer;padding:4px 6px;border-radius:4px;transition:color .15s,background .15s}
+.del-r:hover{color:var(--red);background:#fdeaea}
+tbody tr.row-ok{border-right:3px solid var(--green)}
+
+.summary{margin:14px 16px 0;background:#f8f9fb;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.sr{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border);font-size:14px}
+.sr:last-child{border-bottom:none}
+.sr label{color:var(--muted);font-weight:600}
+.sr .v{font-weight:700}
+.sr input{width:120px;padding:5px 8px;text-align:center;border:1px solid var(--border);border-radius:5px;font-size:14px;font-family:inherit;color:var(--ink);transition:border .15s}
+.sr input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(26,158,106,.1)}
+.sr input.filled{border-color:var(--green);background:#f6fef9}
+.sr-rem .v{color:var(--red)}
+
+.abar{display:flex;gap:7px;flex-wrap:wrap;padding:13px 16px 8px}
+.abar button{flex:1;min-width:80px;padding:10px 5px;font-size:12px;font-weight:700;border:none;border-radius:8px;cursor:pointer;font-family:inherit;transition:filter .15s,transform .1s;white-space:nowrap}
+.abar button:hover{filter:brightness(1.08)}.abar button:active{transform:scale(.97)}
+.b-add{background:var(--ink);color:#fff}
+.b-save{background:#e07c00;color:#fff}
+.b-wa{background:#25D366;color:#fff}
+.b-print{background:#546e7a;color:#fff}
+.b-list{background:#7b1fa2;color:#fff}
+.new-inv-bar{padding:0 16px 16px}
+.btn-new-inv{width:100%;padding:13px;font-size:15px;font-weight:700;border:none;border-radius:8px;cursor:pointer;font-family:inherit;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s,transform .1s}
+.btn-new-inv:hover{filter:brightness(1.08)}.btn-new-inv:active{transform:scale(.98)}
+
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;align-items:center;justify-content:center;padding:16px}
+.ov.open{display:flex}
+.modal{background:#fff;border-radius:12px;padding:22px;width:100%;max-width:400px;box-shadow:0 10px 40px rgba(0,0,0,.2);animation:pop .2s ease;max-height:90vh;overflow-y:auto}
+.modal-lg{max-width:580px}
+@keyframes pop{from{transform:scale(.92);opacity:0}}
+.mh{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.mclose{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:2px 6px;border-radius:4px}
+.mclose:hover{background:#f0f0f0}
+.fg{margin-bottom:13px}
+.fg label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
+.fg input{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;color:var(--ink);background:#fafbfc}
+.fg input:focus{outline:none;border-color:var(--green)}
+.fg input[readonly]{background:#f2f4f7;color:var(--muted);font-size:12px;cursor:text}
+.fg-logo-prev{width:60px;height:60px;border-radius:6px;border:1px dashed var(--border);object-fit:cover;margin-top:6px;display:none}
+.mbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.mbtns button{padding:9px 16px;border:none;border-radius:7px;font-size:13px;font-family:inherit;font-weight:700;cursor:pointer;transition:filter .15s}
+.mbtns button:hover{filter:brightness(1.07)}
+.b-cancel{background:#eef0f3;color:var(--ink)}
+.b-danger{background:var(--red);color:#fff}
+.b-ok{background:var(--green);color:#fff}
+
+/* Firebase setup banner */
+.fb-banner{background:#fff3e0;border:1px solid #ffcc02;border-radius:8px;padding:12px 16px;margin:14px 16px 0;font-size:13px;display:none}
+.fb-banner.show{display:block}
+.fb-banner strong{color:#e07c00}
+.fb-banner a{color:#e07c00}
+
+.inv-list{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.inv-item{border:1px solid var(--border);border-radius:8px;padding:10px 13px;transition:background .15s}
+.inv-item:hover{background:#f5f7fa}
+.inv-top{display:flex;justify-content:space-between;align-items:flex-start}
+.inv-info strong{font-size:14px;display:block;margin-bottom:2px}
+.inv-info span{font-size:12px;color:var(--muted)}
+.inv-total{font-weight:700;color:var(--green);font-size:15px;white-space:nowrap;margin-right:8px}
+.inv-btns{display:flex;gap:6px;margin-top:7px}
+.inv-btns button{padding:4px 10px;border:none;border-radius:5px;font-size:11px;font-family:inherit;font-weight:600;cursor:pointer}
+.b-view{background:var(--green);color:#fff}
+.b-del-inv{background:var(--red);color:#fff}
+.b-wa-inv{background:#25D366;color:#fff}
+
+.loading-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.loading-ov.show{display:flex}
+.spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-msg{color:#fff;font-size:15px;font-weight:600}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:#fff;padding:11px 22px;border-radius:8px;font-size:14px;z-index:800;white-space:nowrap;transition:transform .28s cubic-bezier(.34,1.56,.64,1);box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+/* Receipt Template */
+#rtpl{position:fixed;left:-9999px;top:0;width:400px;background:#fff;font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:22px 18px;color:#111;font-size:13px;line-height:1.5;z-index:-1}
+#rtpl .rh2{text-align:center;margin-bottom:10px}
+#rtpl .rlogo{width:76px;height:76px;object-fit:cover;border-radius:8px;display:none;margin:0 auto 8px}
+#rtpl .rbiz{font-size:18px;font-weight:700;margin-bottom:2px}
+#rtpl .rsub{font-size:12px;color:#666;margin-bottom:2px}
+#rtpl .rphones{font-size:12px;color:#444;margin-bottom:7px}
+#rtpl .rbadge{display:inline-block;background:#1a9e6a;color:#fff;font-size:12px;padding:3px 12px;border-radius:12px}
+#rtpl .rdiv{border:none;border-top:2px dashed #ccc;margin:11px 0}
+#rtpl .rmr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}
+#rtpl .rmr span:first-child{color:#555}
+#rtpl table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px}
+#rtpl thead th{background:#1a2332;color:#fff;padding:7px 5px;text-align:center}
+#rtpl tbody td{border-bottom:1px solid #eee;padding:6px 5px;text-align:center}
+#rtpl tbody td:nth-child(2){text-align:right}
+#rtpl .rsrow{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
+#rtpl .rsrow.tot{font-weight:700;font-size:15px;color:#1a9e6a;border-top:2px solid #1a9e6a;border-bottom:none;margin-top:4px;padding-top:6px}
+#rtpl .rsrow.rem{color:#d63b3b}
+#rtpl .rfooter{text-align:center;font-size:12px;color:#888;margin-top:14px;padding-top:12px;border-top:2px dashed #ccc}
+
+@media print{
+  body{padding-top:0;background:#fff}
+  .app-bar,.abar,.new-inv-bar,.del-r,.loading-ov,.toast,.fb-banner{display:none!important}
+  .card{box-shadow:none;border-radius:0;margin:0;max-width:100%}
+  input{border:none!important;background:transparent!important;box-shadow:none!important}
+}
+</style>
+</head>
+<body>
+
+<datalist id="dl-p"></datalist>
+<datalist id="dl-c"></datalist>
+
+<!-- App Bar -->
+<div class="app-bar">
+  <button class="ib" onclick="openSaved()" title="الفواتير المحفوظة">📋</button>
+  <div class="app-title"><em>🧾</em> فاتورتي</div>
+  <div class="app-bar-side">
+    <div class="sync-dot" id="sync-dot" title="حالة المزامنة"></div>
+    <button class="ib" onclick="openSettings()" title="الإعدادات">⚙️</button>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="ov" id="m-settings">
+  <div class="modal">
+    <div class="mh">⚙️ إعدادات المتجر <button class="mclose" onclick="closeM('m-settings')">✕</button></div>
+
+    <div class="fg"><label>الاسم التجاري</label><input id="s-name" type="text"></div>
+    <div class="fg"><label>التفاصيل / الموقع</label><input id="s-sub" type="text"></div>
+    <div class="fg"><label>رقم الهاتف الأول</label><input id="s-ph1" type="text"></div>
+    <div class="fg"><label>رقم الهاتف الثاني</label><input id="s-ph2" type="text"></div>
+    <div class="fg">
+      <label>شعار المحل</label>
+      <input id="s-logo" type="file" accept="image/*" onchange="uploadLogo(this)">
+      <img id="s-logo-prev" class="fg-logo-prev" alt="شعار">
+    </div>
+    <div class="fg"><label>رقم الفاتورة الحالي</label><input id="s-num" type="number" min="0"></div>
+
+    <!-- Firebase section -->
+    <div style="border-top:2px dashed var(--border);padding-top:13px;margin-top:4px">
+      <div style="font-size:12px;font-weight:700;color:#e07c00;margin-bottom:10px">🔥 إعداد Firebase (مزامنة سحابية)</div>
+      <div class="fg"><label>معرف المتجر (Shop ID)</label><input id="s-shopid" type="text" readonly placeholder="سيُولَّد تلقائياً" style="font-size:11px"></div>
+      <div class="fg"><label>Project ID</label><input id="s-fb-pid" type="text" placeholder="your-project-id"></div>
+      <div class="fg"><label>API Key</label><input id="s-fb-key" type="text" placeholder="AIzaSy..."></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:-8px">بعد الحفظ ستبدأ المزامنة التلقائية مع Firebase</div>
+    </div>
+
+    <div class="mbtns">
+      <button class="b-cancel" onclick="closeM('m-settings')">إلغاء</button>
+      <button class="b-danger" onclick="resetCounter()">↩ تصفير</button>
+      <button class="b-ok"     onclick="saveSettings()">💾 حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Saved Invoices Modal -->
+<div class="ov" id="m-saved">
+  <div class="modal modal-lg">
+    <div class="mh">📋 الفواتير المحفوظة <button class="mclose" onclick="closeM('m-saved')">✕</button></div>
+    <div id="saved-list" class="inv-list"></div>
+  </div>
+</div>
+
+<!-- Invoice Preview Modal -->
+<div class="ov" id="m-preview">
+  <div class="modal modal-lg">
+    <div class="mh">🧾 <span id="prev-title">عرض الفاتورة</span> <button class="mclose" onclick="closeM('m-preview')">✕</button></div>
+    <div id="prev-body"></div>
+    <div class="mbtns" style="margin-top:14px">
+      <button class="b-cancel" onclick="closeM('m-preview')">إغلاق</button>
+      <button class="b-ok" style="background:#25D366" onclick="sharePrevWA()">📲 مشاركة كصورة</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main Card -->
+<div class="card">
+  <div class="rh">
+    <div class="logo-wrap">
+      <img id="logo-img" src="" alt="">
+      <div class="logo-ph" id="logo-ph">🏪<br>شعار<br>المحل</div>
+      <input type="file" accept="image/*" onchange="uploadLogo(this)" title="رفع شعار">
+    </div>
+    <div class="biz">
+      <h2 id="biz-name">مجمع Alion cheikh</h2>
+      <p  id="biz-sub">شارع الرزق</p>
+      <div class="biz-phones" id="biz-phones">📞 31393933 &nbsp;|&nbsp; 46020504</div>
+      <span class="biz-badge">فاتورة بيع مباشر</span>
+    </div>
+  </div>
+
+  <!-- Firebase not configured banner -->
+  <div class="fb-banner" id="fb-banner">
+    ⚠️ <strong>Firebase غير مضبوط</strong> — البيانات محفوظة محلياً فقط.
+    اذهب إلى <strong>الإعدادات ⚙️</strong> وأضف بيانات Firebase للمزامنة السحابية.
+  </div>
+
+  <div class="tear"></div>
+
+  <div class="meta">
+    <div class="mf"><label>رقم الفاتورة</label><input id="inv-id" type="text" readonly></div>
+    <div class="mf"><label>التاريخ والوقت</label><input id="inv-dt" type="text" readonly></div>
+    <div class="mf full">
+      <label>اسم الزبون</label>
+      <input id="customer" type="text" list="dl-c" placeholder="اكتب اسم الزبون..." oninput="markFilled(this)">
+    </div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table id="inv-tbl">
+      <thead>
+        <tr>
+          <th style="width:10%">الكمية</th>
+          <th style="width:44%">النوعية</th>
+          <th style="width:19%">سعر الوحدة</th>
+          <th style="width:19%">الإجمالي</th>
+          <th style="width:8%"></th>
+        </tr>
+      </thead>
+      <tbody id="inv-body"></tbody>
+    </table>
+  </div>
+
+  <div class="summary">
+    <div class="sr">
+      <label>الإجمالي</label>
+      <span class="v" id="subtotal" style="font-size:18px;color:var(--green)">0.00 MRU</span>
+    </div>
+    <div class="sr">
+      <label>المدفوع</label>
+      <input type="number" id="paid" value="0" min="0" oninput="calcTotals();markFilled(this)" placeholder="0 MRU">
+    </div>
+    <div class="sr sr-rem">
+      <label>المتبقي</label>
+      <span class="v" id="remaining">0.00 MRU</span>
+    </div>
+  </div>
+
+  <div class="abar">
+    <button class="b-add"   onclick="addRow()">+ مادة</button>
+    <button class="b-save"  onclick="saveInvoice()">💾 حفظ</button>
+    <button class="b-wa"    onclick="shareWA()">📲 واتساب</button>
+    <button class="b-print" onclick="window.print()">🖨️ طباعة</button>
+    <button class="b-list"  onclick="openSaved()">📋 السجل</button>
+  </div>
+  <div class="new-inv-bar">
+    <button class="btn-new-inv" onclick="newInvoice()">🆕 فاتورة جديدة</button>
+  </div>
+</div>
+
+<!-- Receipt Template -->
+<div id="rtpl">
+  <div class="rh2">
+    <img class="rlogo" id="r-logo" src="" alt="">
+    <div class="rbiz"    id="r-biz"></div>
+    <div class="rsub"    id="r-sub"></div>
+    <div class="rphones" id="r-phones"></div>
+    <span class="rbadge">فاتورة بيع مباشر</span>
+  </div>
+  <hr class="rdiv">
+  <div id="r-meta"></div>
+  <hr class="rdiv">
+  <table>
+    <thead><tr><th>الكمية</th><th>النوعية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+    <tbody id="r-items"></tbody>
+  </table>
+  <hr class="rdiv">
+  <div id="r-summary"></div>
+  <div class="rfooter">شكراً لتعاملكم معنا 🙏</div>
+</div>
+
+<div class="loading-ov" id="loading-ov">
+  <div class="spinner"></div>
+  <div class="loading-msg" id="loading-msg">جاري إنشاء صورة الفاتورة...</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════
+   ▼  ضع بيانات Firebase هنا  ▼
+   يمكنك تركها فارغة والإدخال من الإعدادات
+══════════════════════════════════════════ */
+const DEFAULT_FB_CONFIG = {
+  apiKey:    "",          // من Firebase Console
+  projectId: "",          // اسم المشروع
+};
+/* ══════════════════════════════════════════ */
+
+/* ════════════════════════════════
+   IndexedDB (التخزين المحلي)
+════════════════════════════════ */
+let db;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const req=indexedDB.open('faturati_v5',1);
+    req.onupgradeneeded=e=>{
+      const d=e.target.result;
+      ['kv','invoices','products','customers'].forEach(s=>{
+        if(!d.objectStoreNames.contains(s))
+          d.createObjectStore(s, s==='kv'?{keyPath:'k'}:s==='invoices'?{keyPath:'id',autoIncrement:true}:{keyPath:'name'});
+      });
+    };
+    req.onsuccess=e=>{db=e.target.result;res()};
+    req.onerror=e=>rej(e.target.error);
+  });
+}
+const _tx=(s,m='readonly')=>db.transaction(s,m).objectStore(s);
+function dbGet(s,k){return new Promise((res,rej)=>{const r=_tx(s).get(k);r.onsuccess=()=>res(r.result??null);r.onerror=()=>rej(r.error)})}
+function dbSet(s,o){return new Promise((res,rej)=>{const r=_tx(s,'readwrite').put(o);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+function dbAll(s){return new Promise((res,rej)=>{const r=_tx(s).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+function dbDel(s,k){return new Promise((res,rej)=>{const r=_tx(s,'readwrite').delete(k);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
+const kvGet=k=>dbGet('kv',k).then(r=>r?r.v:null);
+const kvSet=(k,v)=>dbSet('kv',{k,v});
+
+/* ════════════════════════════════
+   Firebase (المزامنة السحابية)
+════════════════════════════════ */
+let fbApp=null, firestore=null, shopId=null;
+
+async function initFirebase(){
+  const pid = await kvGet('fbProjectId') || DEFAULT_FB_CONFIG.projectId;
+  const key = await kvGet('fbApiKey')    || DEFAULT_FB_CONFIG.apiKey;
+
+  if(!pid || !key){
+    setSyncDot('off');
+    document.getElementById('fb-banner').classList.add('show');
+    return false;
+  }
+
+  try{
+    // أولد shopId مرة واحدة واحفظه
+    shopId = await kvGet('shopId');
+    if(!shopId){
+      shopId = 'shop_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+      await kvSet('shopId', shopId);
+    }
+
+    if(!fbApp){
+      fbApp = firebase.initializeApp({
+        apiKey:    key,
+        projectId: pid,
+        authDomain: `${pid}.firebaseapp.com`,
+      });
+      firestore = firebase.firestore(fbApp);
+    }
+
+    setSyncDot('ok');
+    document.getElementById('fb-banner').classList.remove('show');
+    return true;
+  }catch(e){
+    console.error('Firebase init error:', e);
+    setSyncDot('err');
+    return false;
+  }
+}
+
+function setSyncDot(state){
+  const d=document.getElementById('sync-dot');
+  d.className='sync-dot';
+  if(state==='ok')       d.classList.add('ok'),      d.title='متصل بـ Firebase ✅';
+  else if(state==='syncing') d.classList.add('syncing'), d.title='جاري المزامنة...';
+  else if(state==='err') d.classList.add('err'),     d.title='خطأ في الاتصال ❌';
+  else                   d.title='غير متصل بـ Firebase';
+}
+
+// مرجع متجر في Firestore
+const shopRef=()=>firestore.collection('shops').doc(shopId);
+
+async function fbSaveInvoice(inv){
+  if(!firestore) return;
+  setSyncDot('syncing');
+  try{
+    const {logo, ...invNoLogo}=inv; // لا نرفع الشعار لـ Firestore (حجمه كبير)
+    await shopRef().collection('invoices').doc(String(inv.localId||inv.id)).set(invNoLogo);
+    setSyncDot('ok');
+  }catch(e){console.error('fbSaveInvoice',e);setSyncDot('err')}
+}
+
+async function fbSaveSettings(settings){
+  if(!firestore) return;
+  setSyncDot('syncing');
+  try{
+    await shopRef().set(settings, {merge:true});
+    setSyncDot('ok');
+  }catch(e){console.error('fbSaveSettings',e);setSyncDot('err')}
+}
+
+async function fbSaveProduct(name){
+  if(!firestore) return;
+  try{ await shopRef().collection('products').doc(name).set({name}) }catch(e){}
+}
+
+async function fbSaveCustomer(name){
+  if(!firestore) return;
+  try{ await shopRef().collection('customers').doc(name).set({name}) }catch(e){}
+}
+
+async function fbLoadInvoices(){
+  if(!firestore) return [];
+  try{
+    const snap=await shopRef().collection('invoices').orderBy('ts','desc').get();
+    return snap.docs.map(d=>({...d.data(),fbId:d.id}));
+  }catch(e){console.error('fbLoadInvoices',e);return []}
+}
+
+async function fbDeleteInvoice(localId){
+  if(!firestore) return;
+  try{ await shopRef().collection('invoices').doc(String(localId)).delete() }catch(e){}
+}
+
+/* ════════════════════════════════
+   App Init
+════════════════════════════════ */
+async function appInit(){
+  await openDB();
+  const fbOk = await initFirebase();
+
+  const nm  = await kvGet('bizName') || 'مجمع Alion cheikh';
+  const sub = await kvGet('bizSub')  || 'شارع الرزق';
+  const ph1 = await kvGet('phone1')  || '31393933';
+  const ph2 = await kvGet('phone2')  || '46020504';
+  const lg  = await kvGet('logo');
+
+  document.getElementById('biz-name').textContent = nm;
+  document.getElementById('biz-sub').textContent  = sub;
+  setPhones(ph1, ph2);
+  if(lg) applyLogo(lg);
+
+  let cnt = await kvGet('counter') ?? 1177;
+  cnt++;
+  await kvSet('counter', cnt);
+  document.getElementById('inv-id').value = String(cnt).padStart(5,'0');
+  stampDT();
+  addRow();
+  await refreshAC();
+}
+
+function setPhones(p1,p2){
+  const t=[p1,p2].filter(Boolean).join('  |  ');
+  document.getElementById('biz-phones').textContent = t ? '📞 '+t : '';
+}
+function stampDT(){
+  const n=new Date(),p=x=>String(x).padStart(2,'0');
+  document.getElementById('inv-dt').value=`${p(n.getDate())}-${p(n.getMonth()+1)}-${n.getFullYear()}  ${p(n.getHours())}:${p(n.getMinutes())}`;
+}
+
+async function refreshAC(){
+  const pr=await dbAll('products');
+  const cu=await dbAll('customers');
+  document.getElementById('dl-p').innerHTML=pr.map(p=>`<option value="${p.name}">`).join('');
+  document.getElementById('dl-c').innerHTML=cu.map(c=>`<option value="${c.name}">`).join('');
+}
+
+/* ════════════════════════════════
+   Logo
+════════════════════════════════ */
+function uploadLogo(inp){
+  const f=inp.files[0]; if(!f)return;
+  const rd=new FileReader();
+  rd.onload=async e=>{
+    const url=e.target.result;
+    await kvSet('logo',url);
+    applyLogo(url);
+    const sp=document.getElementById('s-logo-prev');
+    sp.src=url; sp.style.display='block';
+    toast('✅ تم رفع الشعار (محفوظ محلياً)');
+  };
+  rd.readAsDataURL(f);
+}
+function applyLogo(url){
+  const img=document.getElementById('logo-img');
+  img.src=url; img.style.display='block';
+  document.getElementById('logo-ph').style.display='none';
+}
+
+/* ════════════════════════════════
+   مؤشر تأكيد
+════════════════════════════════ */
+function markFilled(el){ el.classList.toggle('filled', el.value.trim().length>0) }
+function checkRow(row){
+  const name=row.querySelector('.pname').value.trim();
+  const price=parseFloat(row.querySelector('.uprice').value)||0;
+  row.classList.toggle('row-ok', name.length>0 && price>0);
+}
+
+/* ════════════════════════════════
+   Table
+════════════════════════════════ */
+function addRow(){
+  const tbody=document.getElementById('inv-body');
+  const tr=document.createElement('tr');
+  tr.innerHTML=`
+    <td><input type="number" class="qty"    value="1" min="1" oninput="calcRow(this)"></td>
+    <td><input type="text"   class="pname"  list="dl-p" placeholder="اسم المادة..." oninput="calcRow(this);markFilled(this)"></td>
+    <td><input type="number" class="uprice" value="0"  min="0" oninput="calcRow(this)"></td>
+    <td class="rt-cell"><input type="number" class="rtotal" value="0.00" readonly></td>
+    <td><button class="del-r" onclick="delRow(this)" title="حذف">✕</button></td>`;
+  tbody.appendChild(tr);
+
+  tr.querySelector('.qty').addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();tr.querySelector('.pname').focus()}
+  });
+  tr.querySelector('.pname').addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();const u=tr.querySelector('.uprice');u.focus();u.select()}
+  });
+  tr.querySelector('.uprice').addEventListener('keydown',e=>{
+    if(e.key==='Enter'||(e.key==='Tab'&&!e.shiftKey)){e.preventDefault();addRow()}
+  });
+
+  tr.querySelector('.pname').focus();
+}
+
+function delRow(btn){
+  if(document.querySelectorAll('#inv-body tr').length<=1){toast('⚠️ لا يمكن حذف الصف الأخير');return}
+  btn.closest('tr').remove();
+  calcTotals();
+}
+
+function calcRow(el){
+  const row=el.closest('tr');
+  const q=parseFloat(row.querySelector('.qty').value)||0;
+  const p=parseFloat(row.querySelector('.uprice').value)||0;
+  row.querySelector('.rtotal').value=(q*p).toFixed(2);
+  checkRow(row);
+  calcTotals();
+}
+
+function calcTotals(){
+  let sub=0;
+  document.querySelectorAll('.rtotal').forEach(i=>{sub+=parseFloat(i.value)||0});
+  const paid=parseFloat(document.getElementById('paid').value)||0;
+  const rem=Math.max(0,sub-paid);
+  document.getElementById('subtotal').textContent  = sub.toFixed(2)+' MRU';
+  document.getElementById('remaining').textContent = rem.toFixed(2)+' MRU';
+  return{sub,paid,rem};
+}
+
+function collectData(){
+  const items=[];
+  document.querySelectorAll('#inv-body tr').forEach(row=>{
+    const name=row.querySelector('.pname').value.trim();
+    const qty=parseFloat(row.querySelector('.qty').value)||0;
+    const price=parseFloat(row.querySelector('.uprice').value)||0;
+    const total=parseFloat(row.querySelector('.rtotal').value)||0;
+    if(name||total>0) items.push({name,qty,price,total});
+  });
+  const{sub,paid,rem}=calcTotals();
+  return{
+    number:document.getElementById('inv-id').value,
+    datetime:document.getElementById('inv-dt').value,
+    customer:document.getElementById('customer').value.trim()||'زبون',
+    items,sub,paid,rem,
+    bizName:document.getElementById('biz-name').textContent,
+    bizSub:document.getElementById('biz-sub').textContent,
+    phones:document.getElementById('biz-phones').textContent,
+  };
+}
+
+/* ════════════════════════════════
+   Save Invoice (محلي + Firebase)
+════════════════════════════════ */
+async function saveInvoice(){
+  const d=collectData();
+  if(!d.items.length){toast('⚠️ أضف مادة واحدة على الأقل');return}
+  const logo=await kvGet('logo');
+  const localId=await dbSet('invoices',{...d,logo,ts:Date.now()});
+  if(d.customer&&d.customer!=='زبون') await dbSet('customers',{name:d.customer});
+  for(const it of d.items) if(it.name) await dbSet('products',{name:it.name});
+  await refreshAC();
+
+  // Firebase sync
+  await fbSaveInvoice({...d,localId,ts:Date.now()});
+  if(d.customer&&d.customer!=='زبون') await fbSaveCustomer(d.customer);
+  for(const it of d.items) if(it.name) await fbSaveProduct(it.name);
+
+  toast('✅ تم الحفظ'+(firestore?' والمزامنة مع Firebase ☁️':''));
+}
+
+async function newInvoice(){
+  document.getElementById('inv-body').innerHTML='';
+  document.getElementById('customer').value='';
+  document.getElementById('customer').classList.remove('filled');
+  document.getElementById('paid').value='0';
+  document.getElementById('paid').classList.remove('filled');
+  calcTotals();
+  let cnt=await kvGet('counter')??0; cnt++;
+  await kvSet('counter',cnt);
+  document.getElementById('inv-id').value=String(cnt).padStart(5,'0');
+  stampDT(); addRow();
+  toast('🆕 فاتورة جديدة جاهزة');
+}
+
+/* ════════════════════════════════
+   Receipt Image
+════════════════════════════════ */
+async function populateRTpl(inv){
+  const logo=inv.logo||await kvGet('logo');
+  const rLogo=document.getElementById('r-logo');
+  if(logo){
+    await new Promise(res=>{
+      if(rLogo.src===logo){res();return}
+      rLogo.onload=res; rLogo.onerror=res; rLogo.src=logo;
+    });
+    rLogo.style.display='block';
+  }else{rLogo.style.display='none'}
+  document.getElementById('r-biz').textContent    = inv.bizName||'';
+  document.getElementById('r-sub').textContent    = inv.bizSub||'';
+  document.getElementById('r-phones').textContent = inv.phones||'';
+  document.getElementById('r-meta').innerHTML=`
+    <div class="rmr"><span>رقم الفاتورة:</span><strong>${inv.number}</strong></div>
+    <div class="rmr"><span>التاريخ:</span><strong>${inv.datetime}</strong></div>
+    <div class="rmr"><span>الزبون:</span><strong>${inv.customer}</strong></div>`;
+  document.getElementById('r-items').innerHTML=(inv.items||[]).map((it,i)=>`
+    <tr style="background:${i%2===0?'#fff':'#f8f8f8'}">
+      <td>${it.qty}</td><td style="text-align:right">${it.name||'---'}</td>
+      <td>${it.price.toFixed(2)}</td><td style="color:#1a9e6a;font-weight:700">${it.total.toFixed(2)}</td>
+    </tr>`).join('');
+  const sub=inv.sub||0, paid=inv.paid||0, rem=inv.rem||0;
+  document.getElementById('r-summary').innerHTML=`
+    <div class="rsrow tot"><span>الإجمالي:</span><span>${sub.toFixed(2)} MRU</span></div>
+    <div class="rsrow"><span>المدفوع:</span><span style="color:#1a9e6a">${paid.toFixed(2)} MRU</span></div>
+    ${rem>0?`<div class="rsrow rem"><span>المتبقي:</span><span>${rem.toFixed(2)} MRU</span></div>`:''}`;
+}
+
+async function generateImage(inv){
+  await populateRTpl(inv);
+  const el=document.getElementById('rtpl');
+  el.style.cssText='position:fixed;left:0;top:0;width:400px;z-index:1;background:#fff;font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:22px 18px;color:#111;font-size:13px;line-height:1.5';
+  await new Promise(r=>setTimeout(r,180));
+  const canvas=await html2canvas(el,{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#fff',logging:false,width:400,windowWidth:400});
+  el.style.cssText='position:fixed;left:-9999px;top:0;width:400px;z-index:-1;background:#fff;font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:22px 18px;color:#111;font-size:13px;line-height:1.5';
+  return canvas;
+}
+
+async function shareWA(){
+  const inv=collectData();
+  if(!inv.items.length){toast('⚠️ لا توجد بنود في الفاتورة');return}
+  showLoading(true);
+  try{
+    inv.logo=await kvGet('logo');
+    const canvas=await generateImage(inv);
+    canvas.toBlob(async blob=>{
+      showLoading(false);
+      const file=new File([blob],`فاتورة-${inv.number}.png`,{type:'image/png'});
+      try{
+        if(navigator.canShare&&navigator.canShare({files:[file]})) await navigator.share({files:[file],title:`فاتورة ${inv.number}`});
+        else downloadAndHint(blob,inv.number);
+      }catch(e){if(e.name!=='AbortError') downloadAndHint(blob,inv.number)}
+    },'image/png');
+  }catch(e){showLoading(false);console.error(e);toast('⚠️ خطأ أثناء إنشاء الصورة')}
+}
+
+async function sharePrevWA(){
+  if(!_prevInv)return;
+  showLoading(true);
+  try{
+    const canvas=await generateImage(_prevInv);
+    canvas.toBlob(async blob=>{
+      showLoading(false);
+      const file=new File([blob],`فاتورة-${_prevInv.number}.png`,{type:'image/png'});
+      try{
+        if(navigator.canShare&&navigator.canShare({files:[file]})) await navigator.share({files:[file]});
+        else downloadAndHint(blob,_prevInv.number);
+      }catch(e){if(e.name!=='AbortError') downloadAndHint(blob,_prevInv.number)}
+    },'image/png');
+  }catch(e){showLoading(false);toast('⚠️ خطأ')}
+}
+
+function downloadAndHint(blob,num){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`فاتورة-${num}.png`;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),6000);
+  toast('📥 تم تنزيل الصورة — أرفقها في واتساب');
+}
+
+/* ════════════════════════════════
+   Saved Invoices (محلي + Firebase)
+════════════════════════════════ */
+let _prevInv=null;
+
+async function openSaved(){
+  document.getElementById('m-saved').classList.add('open');
+  const list=document.getElementById('saved-list');
+  list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px">⏳ جاري التحميل...</p>';
+
+  // جلب محلي أولاً، ثم Firebase إن أمكن
+  let invs = await dbAll('invoices');
+
+  if(firestore){
+    try{
+      const fbInvs = await fbLoadInvoices();
+      // دمج: أضف ما هو على Firebase وليس محلياً
+      const localIds = new Set(invs.map(i=>String(i.localId||i.id)));
+      for(const fi of fbInvs){
+        if(!localIds.has(fi.fbId)) invs.push({...fi, id:fi.fbId});
+      }
+    }catch(e){}
+  }
+
+  invs.sort((a,b)=>(b.ts||0)-(a.ts||0));
+
+  if(!invs.length){
+    list.innerHTML='<p style="color:var(--muted);text-align:center;padding:20px">لا توجد فواتير محفوظة بعد</p>';
+    return;
+  }
+  list.innerHTML=invs.map(inv=>`
+    <div class="inv-item" id="ii-${inv.id}">
+      <div class="inv-top">
+        <div class="inv-info">
+          <strong>فاتورة # ${inv.number}</strong>
+          <span>${inv.datetime}  |  ${inv.customer}</span>
+        </div>
+        <div class="inv-total">${(inv.sub||0).toFixed(2)} MRU</div>
+      </div>
+      <div class="inv-btns">
+        <button class="b-view"    onclick="viewInv(${inv.id||`'${inv.fbId}'`})">👁 عرض</button>
+        <button class="b-wa-inv"  onclick="shareInvWA(${inv.id||`'${inv.fbId}'`})">📲 واتساب</button>
+        <button class="b-del-inv" onclick="delInv(${inv.id||`'${inv.fbId}'`})">🗑 حذف</button>
+      </div>
+    </div>`).join('');
+}
+
+async function viewInv(id){
+  const inv=await dbGet('invoices',id); if(!inv)return;
+  _prevInv=inv;
+  document.getElementById('prev-title').textContent=`فاتورة # ${inv.number} — ${inv.customer}`;
+  document.getElementById('prev-body').innerHTML=`
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${inv.datetime}</p>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:300px">
+      <thead><tr>
+        <th style="background:#1a2332;color:#fff;padding:7px 5px;text-align:center">ك</th>
+        <th style="background:#1a2332;color:#fff;padding:7px 5px;text-align:right">النوعية</th>
+        <th style="background:#1a2332;color:#fff;padding:7px 5px;text-align:center">السعر</th>
+        <th style="background:#1a2332;color:#fff;padding:7px 5px;text-align:center">الإجمالي</th>
+      </tr></thead>
+      <tbody>${inv.items.map((it,i)=>`<tr style="background:${i%2===0?'#fff':'#f8f9fb'}">
+        <td style="padding:6px;text-align:center;border-bottom:1px solid #eee">${it.qty}</td>
+        <td style="padding:6px;text-align:right;border-bottom:1px solid #eee">${it.name||'---'}</td>
+        <td style="padding:6px;text-align:center;border-bottom:1px solid #eee">${it.price.toFixed(2)}</td>
+        <td style="padding:6px;text-align:center;border-bottom:1px solid #eee;color:#1a9e6a;font-weight:700">${it.total.toFixed(2)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div style="background:#f8f9fb;border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:12px;font-size:14px">
+      <div style="display:flex;justify-content:space-between;padding:5px 0;color:#1a9e6a;font-weight:700;font-size:16px;border-bottom:1px solid #eee"><span>الإجمالي</span><strong>${(inv.sub||0).toFixed(2)} MRU</strong></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee"><span>المدفوع</span><strong style="color:#1a9e6a">${(inv.paid||0).toFixed(2)} MRU</strong></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0"><span>المتبقي</span><strong style="color:#d63b3b">${(inv.rem||0).toFixed(2)} MRU</strong></div>
+    </div>`;
+  closeM('m-saved');
+  document.getElementById('m-preview').classList.add('open');
+}
+
+async function shareInvWA(id){
+  const inv=await dbGet('invoices',id); if(!inv)return;
+  _prevInv=inv; closeM('m-saved'); await sharePrevWA();
+}
+
+async function delInv(id){
+  if(!confirm('حذف هذه الفاتورة نهائياً؟'))return;
+  await dbDel('invoices',id);
+  await fbDeleteInvoice(id);
+  document.getElementById(`ii-${id}`)?.remove();
+  if(!document.querySelectorAll('.inv-item').length)
+    document.getElementById('saved-list').innerHTML='<p style="color:var(--muted);text-align:center;padding:20px">لا توجد فواتير</p>';
+  toast('🗑 تم الحذف');
+}
+
+/* ════════════════════════════════
+   Settings
+════════════════════════════════ */
+async function openSettings(){
+  document.getElementById('s-name').value = await kvGet('bizName')||'مجمع Alion cheikh';
+  document.getElementById('s-sub').value  = await kvGet('bizSub') ||'شارع الرزق';
+  document.getElementById('s-ph1').value  = await kvGet('phone1') ||'31393933';
+  document.getElementById('s-ph2').value  = await kvGet('phone2') ||'46020504';
+  document.getElementById('s-num').value  = await kvGet('counter')??0;
+  document.getElementById('s-fb-pid').value = await kvGet('fbProjectId')||DEFAULT_FB_CONFIG.projectId||'';
+  document.getElementById('s-fb-key').value = await kvGet('fbApiKey')   ||DEFAULT_FB_CONFIG.apiKey   ||'';
+  const sid=await kvGet('shopId')||'(سيُولَّد عند الاتصال)';
+  document.getElementById('s-shopid').value=sid;
+  const lg=await kvGet('logo');
+  if(lg){const sp=document.getElementById('s-logo-prev');sp.src=lg;sp.style.display='block'}
+  document.getElementById('m-settings').classList.add('open');
+}
+
+async function saveSettings(){
+  const nm  = document.getElementById('s-name').value.trim();
+  const sub = document.getElementById('s-sub').value.trim();
+  const ph1 = document.getElementById('s-ph1').value.trim();
+  const ph2 = document.getElementById('s-ph2').value.trim();
+  const num = parseInt(document.getElementById('s-num').value)||0;
+  const pid = document.getElementById('s-fb-pid').value.trim();
+  const key = document.getElementById('s-fb-key').value.trim();
+
+  if(nm){await kvSet('bizName',nm); document.getElementById('biz-name').textContent=nm}
+  await kvSet('bizSub',sub);  document.getElementById('biz-sub').textContent=sub;
+  await kvSet('phone1',ph1);
+  await kvSet('phone2',ph2);  setPhones(ph1,ph2);
+  await kvSet('counter',num);
+  document.getElementById('inv-id').value=String(num).padStart(5,'0');
+
+  if(pid) await kvSet('fbProjectId',pid);
+  if(key) await kvSet('fbApiKey',key);
+
+  // أعد تهيئة Firebase بالبيانات الجديدة
+  fbApp=null; firestore=null;
+  await initFirebase();
+
+  // مزامنة الإعدادات
+  await fbSaveSettings({bizName:nm,bizSub:sub,phone1:ph1,phone2:ph2,updatedAt:Date.now()});
+
+  closeM('m-settings');
+  toast('✅ تم حفظ الإعدادات'+(firestore?' والمزامنة مع Firebase ☁️':''));
+}
+
+async function resetCounter(){
+  if(!confirm('تصفير عداد الفواتير إلى صفر؟'))return;
+  await kvSet('counter',0);
+  document.getElementById('s-num').value=0;
+  toast('🔄 تم التصفير');
+}
+
+/* ════════════════════════════════
+   Helpers
+════════════════════════════════ */
+function closeM(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')}));
+function showLoading(on,msg='جاري إنشاء صورة الفاتورة...'){
+  document.getElementById('loading-msg').textContent=msg;
+  document.getElementById('loading-ov').classList[on?'add':'remove']('show');
+}
+let _tt;
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(_tt); _tt=setTimeout(()=>el.classList.remove('show'),3400);
+}
+
+appInit();
+</script>
+</body>
+</html>
